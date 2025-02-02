@@ -1,130 +1,105 @@
 import numpy as np
-import csv
-import tkinter as tk
-from tkinter import messagebox
+import pandas as pd
+import sys
 
-# 📥 Fonction pour charger MNIST CSV
-def load_mnist_csv(filename):
-    data = []
-    labels = []
-    with open(filename, 'r') as f:
-        reader = csv.reader(f)
-        next(reader)  # Ignorer l'en-tête
-        for row in reader:
-            labels.append(int(row[0]))  # Première colonne = label (0-9)
-            pixels = np.array(row[1:], dtype=np.float32) / 255.0  # Normalisation 0-255 → 0-1
-            data.append(pixels)
-    return np.array(data), np.array(labels)
+data = pd.read_csv('./data/train.csv')
 
-# 📥 Charger toutes les données
-x_train, y_train = load_mnist_csv("mnist_train.csv")
-x_test, y_test = load_mnist_csv("mnist_test.csv")
+data = np.array(data)
+m, n = data.shape
+np.random.shuffle(data) # shuffle before splitting into dev and training sets
 
-# 🚀 Perceptron avec numpy
-class Perceptron:
-    def __init__(self, learning_rate=0.01, n_iters=10, n_classes=10):
-        self.lr = learning_rate
-        self.n_iters = n_iters
-        self.n_classes = n_classes
-        self.weights = None
-        self.bias = None
+data_dev = data[0:1000].T
+Y_dev = data_dev[0]
+X_dev = data_dev[1:n]
+X_dev = X_dev / 255.
 
-    def fit(self, X, y):
-        n_samples, n_features = X.shape
-        self.weights = np.zeros((self.n_classes, n_features))  # Un poids pour chaque classe
-        self.bias = np.zeros(self.n_classes)  # Un biais pour chaque classe
+data_train = data[1000:m].T
+Y_train = data_train[0]
+X_train = data_train[1:n]
+X_train = X_train / 255
+m_train = X_train.shape[1]
 
-        for _ in range(self.n_iters):
-            for idx in range(n_samples):
-                linear_output = np.dot(self.weights, X[idx]) + self.bias  # Produit scalaire pour chaque classe
-                y_predicted = np.argmax(linear_output)  # Classe prédite (avec la plus grande sortie)
-                
-                if y_predicted != y[idx]:  # Mise à jour si l'étiquette est incorrecte
-                    # Mise à jour des poids et du biais pour la classe correcte et incorrecte
-                    self.weights[y[idx]] += self.lr * X[idx]
-                    self.bias[y[idx]] += self.lr
-                    self.weights[y_predicted] -= self.lr * X[idx]
-                    self.bias[y_predicted] -= self.lr
+###############################################################
+def init_params():
+    W1 = np.random.rand(10, 784) - 0.5
+    b1 = np.random.rand(10, 1) - 0.5
+    W2 = np.random.rand(10, 10) - 0.5
+    b2 = np.random.rand(10, 1) - 0.5
+    return W1, b1, W2, b2
 
-    def predict(self, X):
-        linear_output = np.dot(self.weights, X.T) + self.bias[:, np.newaxis]  # Calcul pour chaque exemple
-        return np.argmax(linear_output, axis=0)  # Prédiction avec la plus grande sortie pour chaque exemple
+def ReLU(Z: np.ndarray) -> np.ndarray:
+    return np.maximum(Z, 0)
 
-# 📊 Entraînement du Perceptron
-perceptron = Perceptron(learning_rate=0.1, n_iters=10)
-perceptron.fit(x_train, y_train)
+def softmax(Z: np.ndarray) -> np.ndarray:
+    A = np.exp(Z) / sum(np.exp(Z))
+    return A
+    
+def forward_prop(W1: np.ndarray, b1: np.ndarray, W2: np.ndarray, b2: np.ndarray, X: np.ndarray) -> tuple[np.ndarray]:
+    Z1 = W1.dot(X) + b1
+    A1 = ReLU(Z1)
+    Z2 = W2.dot(A1) + b2
+    A2 = softmax(Z2)
+    return Z1, A1, Z2, A2
 
-# 📈 Évaluation
-y_pred = perceptron.predict(x_test)
-accuracy = np.mean(y_pred == y_test)
-print(f"Précision du Perceptron sur MNIST (0-9) : {accuracy:.2%}")
+def dReLU(Z: np.ndarray) -> np.ndarray:
+    return Z > 0
 
-# 🎨 Interface Graphique pour dessiner avec la souris (Tkinter)
-class DrawApp:
-    def __init__(self, root):
-        self.root = root
-        self.root.title("Dessinez un chiffre (0-9)")
-        
-        self.canvas = tk.Canvas(self.root, width=280, height=280, bg="white")
-        self.canvas.pack()
-        
-        self.canvas.bind("<B1-Motion>", self.paint)  # Dessiner en maintenant le bouton gauche de la souris
-        self.canvas.bind("<ButtonRelease-1>", self.save_drawing)  # Sauvegarder à la fin du dessin
+def one_hot(Y: np.ndarray) -> np.ndarray:
+    one_hot_Y = np.zeros((Y.size, Y.max() + 1))
+    one_hot_Y[np.arange(Y.size), Y] = 1
+    one_hot_Y = one_hot_Y.T
+    return one_hot_Y
 
-        self.last_x, self.last_y = None, None
-        self.drawing = np.zeros((28, 28))  # 28x28 image de dessin
-        self.is_eraser = False  # Mode gomme désactivé par défaut
+def backward_prop(Z1: np.ndarray, A1: np.ndarray, A2: np.ndarray, W2: np.ndarray, X: np.ndarray, Y: np.ndarray) -> tuple[np.ndarray]:
+    one_hot_Y = one_hot(Y)
+    dZ2 = A2 - one_hot_Y
+    dW2 = 1 / m * dZ2.dot(A1.T)
+    db2 = 1 / m * np.sum(dZ2)
+    dZ1 = W2.T.dot(dZ2) * dReLU(Z1)
+    dW1 = 1 / m * dZ1.dot(X.T)
+    db1 = 1 / m * np.sum(dZ1)
+    return dW1, db1, dW2, db2
 
-        self.button_predict = tk.Button(self.root, text="Prédire", command=self.predict)
-        self.button_predict.pack()
+def update_params(W1: np.ndarray, b1: np.ndarray, W2: np.ndarray, b2: np.ndarray, dW1: np.ndarray, db1: np.ndarray, dW2: np.ndarray, db2: np.ndarray, alpha: float) -> tuple[np.ndarray]:
+    W1 = W1 - alpha * dW1
+    b1 = b1 - alpha * db1    
+    W2 = W2 - alpha * dW2  
+    b2 = b2 - alpha * db2    
+    return W1, b1, W2, b2
 
-        self.button_eraser = tk.Button(self.root, text="Gomme", command=self.toggle_eraser)
-        self.button_eraser.pack()
+##############################################
+def get_predictions(A2: np.ndarray) -> np.ndarray:
+    return np.argmax(A2, 0)
 
-    def paint(self, event):
-        """ Dessine un point ou efface selon le mode. """
-        x, y = event.x, event.y
-        if self.last_x and self.last_y:
-            if self.is_eraser:
-                self.canvas.create_line(self.last_x, self.last_y, x, y, width=10, fill="white", capstyle=tk.ROUND, smooth=True)
-                self.update_drawing(x, y, erase=True)
-            else:
-                self.canvas.create_line(self.last_x, self.last_y, x, y, width=10, fill="black", capstyle=tk.ROUND, smooth=True)
-                self.update_drawing(x, y, erase=False)
-        self.last_x, self.last_y = x, y
+def get_accuracy(predictions: np.ndarray, Y: np.ndarray) -> float:
+    print(predictions, Y)
+    return np.sum(predictions == Y) / Y.size
 
-    def save_drawing(self, event):
-        """ Sauvegarde l'image après avoir fini de dessiner. """
-        self.last_x, self.last_y = None, None
+def gradient_descent(X: np.ndarray, Y: np.ndarray, alpha: float, iterations: int) -> None:
+    W1, b1, W2, b2 = init_params()
+    for i in range(iterations):
+        Z1, A1, _, A2 = forward_prop(W1, b1, W2, b2, X)
+        dW1, db1, dW2, db2 = backward_prop(Z1, A1, A2, W2, X, Y)
+        W1, b1, W2, b2 = update_params(W1, b1, W2, b2, dW1, db1, dW2, db2, alpha)
 
-    def update_drawing(self, x, y, erase=False):
-        """ Met à jour le tableau numpy représentant le dessin (efface ou dessine). """
-        row = int(y // 10)  # Divise par 10 pour obtenir l'index des pixels
-        col = int(x // 10)  # Divise par 10 pour obtenir l'index des pixels
-        if 0 <= row < 28 and 0 <= col < 28:
-            if erase:
-                self.drawing[row, col] = 0.0  # Efface le pixel
-            else:
-                self.drawing[row, col] = 1.0  # Dessine un pixel noir
+        print(round((i/iterations)*100, 2), "%")
+        # Supprime la ligne précédente
+        sys.stdout.write("\033[F")  # Déplace le curseur une ligne au-dessus
+        sys.stdout.write("\033[K")  # Efface la ligne entière
 
-    def toggle_eraser(self):
-        """ Bascule entre le mode dessin et le mode gomme. """
-        self.is_eraser = not self.is_eraser
-        if self.is_eraser:
-            self.button_eraser.config(bg="red")  # Indique que la gomme est activée
-        else:
-            self.button_eraser.config(bg="SystemButtonFace")  # Rétablit le bouton normal
+    np.save("./weights/W1.npy", W1)
+    np.save("./weights/b1.npy", b1)
+    np.save("./weights/W2.npy", W2)
+    np.save("./weights/b2.npy", b2)
 
-    def predict(self):
-        """ Prédit le chiffre dessiné. """
-        # Aplatir l'image pour la passer au perceptron
-        flat_drawing = self.drawing.flatten()
+###############################################
+def make_predictions(X: np.ndarray, W1: np.ndarray, b1: np.ndarray, W2: np.ndarray, b2: np.ndarray) -> np.ndarray:
+    A2 = forward_prop(W1, b1, W2, b2, X)[3]
+    predictions = get_predictions(A2)
+    return predictions
 
-        # Prédiction
-        prediction = perceptron.predict(np.array([flat_drawing]))
-        messagebox.showinfo("Prédiction", f"Le chiffre que vous avez dessiné est : {prediction[0]}")
-
-# Lancer l'application Tkinter
-root = tk.Tk()
-app = DrawApp(root)
-root.mainloop()
+def test_prediction(index: int, W1: np.ndarray, b1: np.ndarray, W2: np.ndarray, b2: np.ndarray) -> None:
+    prediction = make_predictions(X_train[:, index, None], W1, b1, W2, b2)
+    label = Y_train[index]
+    print("Prediction: ", prediction)
+    print("Label: ", label)
