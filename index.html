@@ -1,0 +1,98 @@
+<canvas id="pixelCanvas" width="320" height="320" style="image-rendering: pixelated; border:1px solid black;"></canvas>
+<button id="clearCanvas">Effacer</button>
+
+<script>
+  const canvas = document.getElementById("pixelCanvas");
+  const ctx = canvas.getContext("2d");
+  const gridSize = 28; // Nombre de pixels en largeur/hauteur
+  const pixelSize = canvas.width / gridSize; // Taille d'un pixel
+  let isDrawing = false;
+  let lastX = -1, lastY = -1; // Stocke la dernière case coloriée
+
+  // Dessiner la grille
+  function drawGrid() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.strokeStyle = "#ccc";
+    for (let i = 0; i <= gridSize; i++) {
+      let pos = i * pixelSize;
+      ctx.beginPath();
+      ctx.moveTo(pos, 0);
+      ctx.lineTo(pos, canvas.height);
+      ctx.moveTo(0, pos);
+      ctx.lineTo(canvas.width, pos);
+      ctx.stroke();
+    }
+    lastX = -1;
+    lastY = -1;
+  }
+
+  // Colorier un pixel et ses voisins avec différentes intensités
+  function fillPixel(x, y) {
+    if (x === lastX && y === lastY) return; // Évite de colorier si on est sur le même pixel
+    
+    lastX = x;
+    lastY = y;
+
+    // Dessiner le pixel central à 90% noir
+    ctx.fillStyle = "rgba(0, 0, 0, 0.85)";
+    ctx.fillRect(x * pixelSize, y * pixelSize, pixelSize, pixelSize);
+
+    // Voisins directs (50% noir)
+    const directNeighbors = [
+      [x, y - 1], [x - 1, y], [x + 1, y], [x, y + 1]
+    ];
+
+    // Coins diagonaux (25% noir)
+    const diagonalNeighbors = [
+      [x - 1, y - 1], [x + 1, y - 1], 
+      [x - 1, y + 1], [x + 1, y + 1]
+    ];
+
+    // Colorer les voisins directs
+    ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
+    directNeighbors.forEach(([nx, ny]) => {
+      if (nx >= 0 && nx < gridSize && ny >= 0 && ny < gridSize) {
+        ctx.fillRect(nx * pixelSize, ny * pixelSize, pixelSize, pixelSize);
+      }
+    });
+
+    // Colorer les coins diagonaux
+    ctx.fillStyle = "rgba(0, 0, 0, 0.2)";
+    diagonalNeighbors.forEach(([nx, ny]) => {
+      if (nx >= 0 && nx < gridSize && ny >= 0 && ny < gridSize) {
+        ctx.fillRect(nx * pixelSize, ny * pixelSize, pixelSize, pixelSize);
+      }
+    });
+  }
+
+  // Détecter le passage à un autre pixel
+  function handleMouseMove(e) {
+    if (!isDrawing) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const x = Math.floor((e.clientX - rect.left) / pixelSize);
+    const y = Math.floor((e.clientY - rect.top) / pixelSize);
+
+    fillPixel(x, y);
+  }
+
+  // Activer le dessin au clic
+  canvas.addEventListener("mousedown", (e) => {
+    isDrawing = true;
+    handleMouseMove(e);
+  });
+
+  // Désactiver le dessin au relâchement, même hors du canvas
+  window.addEventListener("mouseup", () => {
+    isDrawing = false;
+  });
+
+  // Écouter les déplacements de la souris
+  canvas.addEventListener("mousemove", handleMouseMove);
+
+  // Effacer le canvas
+  document.getElementById("clearCanvas").addEventListener("click", drawGrid);
+
+  // Initialisation
+  drawGrid();
+</script>
