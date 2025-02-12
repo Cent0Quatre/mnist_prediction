@@ -1,15 +1,75 @@
 <canvas id="pixelCanvas" width="320" height="320" style="image-rendering: pixelated; border:1px solid black;"></canvas>
 <button id="clearCanvas">Effacer</button>
+<button id="downloadCanvas">Télécharger (28x28)</button>
+<div class="jauge">
+  <div class="remplissage"></div>
+</div>
+
+<style>
+        .jauge {
+            position: relative;
+            width: 25px;
+            height: 25px;
+            border: 3px solid black;
+            border-radius: 10px;
+            background: #ddd;
+            overflow: hidden;
+        }
+
+        .remplissage {
+            position: absolute;
+            bottom: 0;
+            width: 100%;
+            height: 90% !important;
+            background: linear-gradient(to bottom, #00cc66, #00994d);
+            transition: height 0.5s ease-in-out;
+        }
+</style>
 
 <script>
   const canvas = document.getElementById("pixelCanvas");
-  const ctx = canvas.getContext("2d");
-  const gridSize = 28; // Nombre de pixels en largeur/hauteur
-  const pixelSize = canvas.width / gridSize; // Taille d'un pixel
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  const gridSize = 28;
+  const pixelSize = canvas.width / gridSize;
   let isDrawing = false;
-  let lastX = -1, lastY = -1; // Stocke la dernière case coloriée
+  let lastX = -1, lastY = -1;
+  
+  // Tableau pour suivre les pixels dessinés
+  let drawnPixels = new Set();
 
-  // Dessiner la grille
+  function downloadCanvas() {
+    const smallCanvas = document.createElement('canvas');
+    smallCanvas.width = 28;
+    smallCanvas.height = 28;
+    const smallCtx = smallCanvas.getContext('2d', { willReadFrequently: true });
+    
+    smallCtx.imageSmoothingEnabled = false;
+    
+    // Remplir avec un fond transparent au lieu de blanc
+    smallCtx.clearRect(0, 0, 28, 28);
+    
+    // Parcourir uniquement les pixels dessinés
+    drawnPixels.forEach(pixelKey => {
+        const [x, y] = pixelKey.split(',').map(Number);
+        const imageData = ctx.getImageData(x * pixelSize, y * pixelSize, 1, 1);
+        const [r, g, b, a] = imageData.data;
+        
+        // Calculer la valeur de gris (0 = rien, 1 = noir)
+        const gray = (255 - r) / 255; // On utilise juste le canal rouge car c'est du gris
+        
+        // Ne dessiner que si la valeur n'est pas 0
+        if (gray > 0) {
+            smallCtx.fillStyle = `rgb(${255-Math.floor(gray*255)},${255-Math.floor(gray*255)},${255-Math.floor(gray*255)})`;
+            smallCtx.fillRect(x, y, 1, 1);
+        }
+    });
+    
+    const link = document.createElement('a');
+    link.download = 'dessin-28x28.png';
+    link.href = smallCanvas.toDataURL('image/png', 1.0);
+    link.click();
+  }
+
   function drawGrid() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.strokeStyle = "#ccc";
@@ -24,48 +84,47 @@
     }
     lastX = -1;
     lastY = -1;
+    // Réinitialiser les pixels dessinés
+    drawnPixels.clear();
   }
 
-  // Colorier un pixel et ses voisins avec différentes intensités
   function fillPixel(x, y) {
-    if (x === lastX && y === lastY) return; // Évite de colorier si on est sur le même pixel
+    if (x === lastX && y === lastY) return;
     
     lastX = x;
     lastY = y;
 
-    // Dessiner le pixel central à 90% noir
+    // Marquer le pixel central comme dessiné
+    drawnPixels.add(`${x},${y}`);
     ctx.fillStyle = "rgba(0, 0, 0, 0.85)";
     ctx.fillRect(x * pixelSize, y * pixelSize, pixelSize, pixelSize);
 
-    // Voisins directs (50% noir)
     const directNeighbors = [
       [x, y - 1], [x - 1, y], [x + 1, y], [x, y + 1]
     ];
 
-    // Coins diagonaux (25% noir)
     const diagonalNeighbors = [
       [x - 1, y - 1], [x + 1, y - 1], 
       [x - 1, y + 1], [x + 1, y + 1]
     ];
 
-    // Colorer les voisins directs
     ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
     directNeighbors.forEach(([nx, ny]) => {
       if (nx >= 0 && nx < gridSize && ny >= 0 && ny < gridSize) {
+        drawnPixels.add(`${nx},${ny}`); // Marquer le pixel voisin
         ctx.fillRect(nx * pixelSize, ny * pixelSize, pixelSize, pixelSize);
       }
     });
 
-    // Colorer les coins diagonaux
-    ctx.fillStyle = "rgba(0, 0, 0, 0.2)";
+    ctx.fillStyle = "rgba(0, 0, 0, 0.25)";
     diagonalNeighbors.forEach(([nx, ny]) => {
       if (nx >= 0 && nx < gridSize && ny >= 0 && ny < gridSize) {
+        drawnPixels.add(`${nx},${ny}`); // Marquer le pixel diagonal
         ctx.fillRect(nx * pixelSize, ny * pixelSize, pixelSize, pixelSize);
       }
     });
   }
 
-  // Détecter le passage à un autre pixel
   function handleMouseMove(e) {
     if (!isDrawing) return;
 
@@ -76,23 +135,19 @@
     fillPixel(x, y);
   }
 
-  // Activer le dessin au clic
   canvas.addEventListener("mousedown", (e) => {
     isDrawing = true;
     handleMouseMove(e);
   });
 
-  // Désactiver le dessin au relâchement, même hors du canvas
   window.addEventListener("mouseup", () => {
     isDrawing = false;
   });
 
-  // Écouter les déplacements de la souris
   canvas.addEventListener("mousemove", handleMouseMove);
 
-  // Effacer le canvas
   document.getElementById("clearCanvas").addEventListener("click", drawGrid);
+  document.getElementById("downloadCanvas").addEventListener("click", downloadCanvas);
 
-  // Initialisation
   drawGrid();
 </script>
