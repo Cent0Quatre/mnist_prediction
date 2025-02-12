@@ -1,6 +1,8 @@
 import numpy as np
 import pandas as pd
 import sys
+import matplotlib.pyplot as plt
+from PIL import Image
 
 # ---------------------------
 # Chargement et préparation des données
@@ -158,48 +160,75 @@ def make_predictions(X: np.ndarray,
     predictions = get_predictions(A3)
     return predictions
 
+
+def test_prediction_with_confidence(img: np.ndarray, 
+                                  W1: np.ndarray, b1: np.ndarray, 
+                                  W2: np.ndarray, b2: np.ndarray, 
+                                  W3: np.ndarray, b3: np.ndarray) -> tuple[int, float]:
+    """
+    Fait une prédiction sur un exemple et renvoie la prédiction ainsi que sa probabilité associée.
+    
+    Paramètres:
+        index (int): L'index de l'exemple à tester
+        W1, b1, W2, b2, W3, b3 (np.ndarray): Les paramètres du modèle
+        
+    Retourne:
+        tuple[int, float]: (prédiction, probabilité)
+    """
+    # Propagation avant pour obtenir les activations finales
+    A3 = forward_prop(W1, b1, W2, b2, W3, b3, img)[5]
+    
+    # Obtenir la prédiction (classe avec la plus haute probabilité)
+    prediction = get_predictions(A3)[0]
+    
+    # Obtenir la probabilité associée à la prédiction
+    confidence = float(np.max(A3))  # Prend la plus haute probabilité
+    
+    return prediction, confidence
+
 def test_prediction(index: int, 
                     W1: np.ndarray, b1: np.ndarray, 
                     W2: np.ndarray, b2: np.ndarray, 
                     W3: np.ndarray, b3: np.ndarray) -> None:
-    prediction = make_predictions(X_train[:, index, None], W1, b1, W2, b2, W3, b3)
+    current_image = X_train[:, index, None]
+    print(current_image)
+    prediction, confidence = test_prediction_with_confidence(current_image, W1, b1, W2, b2, W3, b3)
     label = Y_train[index]
     print("Prediction:", prediction)
+    print("Confidence: {:.2%}".format(confidence))  # Affiche la probabilité en pourcentage
     print("Label:", label)
+    current_image = current_image.reshape((28, 28)) * 255
+    plt.gray()
+    plt.imshow(current_image, interpolation='nearest')
+    plt.show()
 
 def get_accuracy(predictions: np.ndarray, Y: np.ndarray) -> float:
     return np.sum(predictions == Y) / Y.size
 
-def display_layer_outputs(X: np.ndarray,
-                          W1: np.ndarray, b1: np.ndarray,
-                          W2: np.ndarray, b2: np.ndarray,
-                          W3: np.ndarray, b3: np.ndarray) -> None:
-    """
-    Affiche les valeurs de Z (pré-activation) et A (activation) pour chaque couche.
-    Pour la couche de sortie, A correspond aux probabilités pour chaque classe.
+# -------------------
+# Process images
+# -------------------
+
+def load_and_preprocess_image(image_path: str) -> np.ndarray:
+    # Charger l'image
+    img = Image.open(image_path)
     
-    Paramètres :
-      - X : l'entrée (de dimension (784, n_exemples))
-      - W1, b1 : paramètres de la première couche cachée
-      - W2, b2 : paramètres de la deuxième couche cachée
-      - W3, b3 : paramètres de la couche de sortie
-    """
-    # Propagation avant
-    Z1, A1, Z2, A2, Z3, A3 = forward_prop(W1, b1, W2, b2, W3, b3, X)
+    # Vérifier la taille
+    if img.size != (28, 28):
+        raise ValueError(f"L'image doit être de taille 28x28 pixels. Taille actuelle: {img.size}")
     
-    # Affichage des résultats pour chaque couche
-    print("=== Couche 1 (Première couche cachée) ===")
-    print("Z1 (pré-activations) :")
-    print(Z1)
-    print("A1 (activations) :")
-    print(A1)
-    print("\n=== Couche 2 (Deuxième couche cachée) ===")
-    print("Z2 (pré-activations) :")
-    print(Z2)
-    print("A2 (activations) :")
-    print(A2)
-    print("\n=== Couche de sortie ===")
-    print("Z3 (pré-activations) :")
-    print(Z3)
-    print("A3 (probabilités via softmax) :")
-    print(A3)
+    # Convertir en niveaux de gris
+    img = img.convert('L')
+    
+    # Convertir en tableau numpy
+    img_array = np.array(img, dtype=np.float32)
+    
+    # Inverser les valeurs (pour que 0 = blanc et 1 = noir)
+    img_array = img_array / 255.0
+    return img_array.reshape(784, 1)    
+
+def test_img_prediction(img: str, W1: np.ndarray, b1: np.ndarray, W2: np.ndarray, b2: np.ndarray, W3: np.ndarray, b3: np.ndarray) -> None:
+    img = load_and_preprocess_image(img)
+    prediction, confidence = test_prediction_with_confidence(img, W1, b1, W2, b2, W3, b3)
+    print("Prediction:", prediction)
+    print("Confidence: {:.2%}".format(confidence))  # Affiche la probabilité en pourcentage
