@@ -1,27 +1,26 @@
 import numpy as np
 import pandas as pd
-import sys
+import sys, os
 import matplotlib.pyplot as plt
-from PIL import Image
 
 # ---------------------------
 # Chargement et préparation des données
 # ---------------------------
-data = pd.read_csv('./data/train.csv')
-data = np.array(data)
-m, n = data.shape
-np.random.shuffle(data)  # Mélange des données avant séparation
+data_train = pd.read_csv('./data/mnist_train.csv')
+data_train = np.array(data_train)
+np.random.shuffle(data_train)  # Mélange des données avant séparation
 
-# Ensemble de développement (validation)
-data_dev = data[0:1000].T
-Y_dev = data_dev[0]
-X_dev = data_dev[1:n] / 255.
-
-# Ensemble d'entraînement
-data_train = data[1000:m].T
-Y_train = data_train[0]
-X_train = data_train[1:n] / 255.
+# Séparation des features et des labels
+data_train = data_train.T
+Y_train = data_train[0]  # Labels
+X_train = data_train[1:] / 255.  # Normalisation des pixels
 m_train = X_train.shape[1]
+
+# Chargement des données de test (utilisées comme validation)
+data_dev = pd.read_csv('./data/mnist_test.csv')
+data_dev = np.array(data_dev).T
+Y_dev = data_dev[0]  # Labels
+X_dev = data_dev[1:] / 255.  # Normalisation des pixels
 
 # ---------------------------
 # Fonctions d'activation et softmax
@@ -50,7 +49,7 @@ def one_hot(Y: np.ndarray) -> np.ndarray:
 def forward_prop(W1: np.ndarray, b1: np.ndarray, 
                  W2: np.ndarray, b2: np.ndarray, 
                  W3: np.ndarray, b3: np.ndarray, 
-                 X: np.ndarray) -> tuple[np.ndarray, ...]:
+                 X: np.ndarray) -> tuple[np.ndarray]:
     Z1 = np.dot(W1, X) + b1
     A1 = ReLU(Z1)
     Z2 = np.dot(W2, A1) + b2
@@ -66,7 +65,7 @@ def backward_prop(Z1: np.ndarray, A1: np.ndarray,
                   Z2: np.ndarray, A2: np.ndarray, 
                   A3: np.ndarray, 
                   W2: np.ndarray, W3: np.ndarray,
-                  X: np.ndarray, Y: np.ndarray) -> tuple[np.ndarray, ...]:
+                  X: np.ndarray, Y: np.ndarray) -> tuple[np.ndarray]:
     m = X.shape[1]
     one_hot_Y_mat = one_hot(Y)
     
@@ -92,7 +91,7 @@ def backward_prop(Z1: np.ndarray, A1: np.ndarray,
 # ---------------------------
 # Initialisation des paramètres (avec He initialization)
 # ---------------------------
-def init_params() -> tuple[np.ndarray, ...]:
+def init_params() -> tuple[np.ndarray]:
     np.random.seed(42)
     # Réduction du nombre de neurones :
     #  - Couche 1 : 32 neurones
@@ -115,13 +114,13 @@ def update_params(W1: np.ndarray, b1: np.ndarray,
                   dW1: np.ndarray, db1: np.ndarray, 
                   dW2: np.ndarray, db2: np.ndarray, 
                   dW3: np.ndarray, db3: np.ndarray, 
-                  alpha: float) -> tuple[np.ndarray, ...]:
-    W1 = W1 - alpha * dW1
-    b1 = b1 - alpha * db1    
-    W2 = W2 - alpha * dW2  
-    b2 = b2 - alpha * db2
-    W3 = W3 - alpha * dW3  
-    b3 = b3 - alpha * db3    
+                  alpha: float) -> tuple[np.ndarray]:
+    W1 -= alpha * dW1
+    b1 -= alpha * db1    
+    W2 -= alpha * dW2  
+    b2 -= alpha * db2
+    W3 -= alpha * dW3  
+    b3 -= alpha * db3    
     return W1, b1, W2, b2, W3, b3
 
 # ---------------------------
@@ -130,10 +129,9 @@ def update_params(W1: np.ndarray, b1: np.ndarray,
 def gradient_descent(X: np.ndarray, Y: np.ndarray, alpha: float, iterations: int) -> None:
     W1, b1, W2, b2, W3, b3 = init_params()
     for i in range(iterations):
-        Z1, A1, Z2, A2, Z3, A3 = forward_prop(W1, b1, W2, b2, W3, b3, X)
+        Z1, A1, Z2, A2, _, A3 = forward_prop(W1, b1, W2, b2, W3, b3, X)
         dW1, db1, dW2, db2, dW3, db3 = backward_prop(Z1, A1, Z2, A2, A3, W2, W3, X, Y)
-        W1, b1, W2, b2, W3, b3 = update_params(W1, b1, W2, b2, W3, b3,
-                                                 dW1, db1, dW2, db2, dW3, db3, alpha)
+        W1, b1, W2, b2, W3, b3 = update_params(W1, b1, W2, b2, W3, b3, dW1, db1, dW2, db2, dW3, db3, alpha)
         # Affichage du progrès
         print(round((i / iterations) * 100, 2), "%")
         sys.stdout.write("\033[F")  # Remonte d'une ligne
@@ -165,16 +163,6 @@ def test_prediction_with_confidence(img: np.ndarray,
                                   W1: np.ndarray, b1: np.ndarray, 
                                   W2: np.ndarray, b2: np.ndarray, 
                                   W3: np.ndarray, b3: np.ndarray) -> tuple[int, float]:
-    """
-    Fait une prédiction sur un exemple et renvoie la prédiction ainsi que sa probabilité associée.
-    
-    Paramètres:
-        index (int): L'index de l'exemple à tester
-        W1, b1, W2, b2, W3, b3 (np.ndarray): Les paramètres du modèle
-        
-    Retourne:
-        tuple[int, float]: (prédiction, probabilité)
-    """
     # Propagation avant pour obtenir les activations finales
     A3 = forward_prop(W1, b1, W2, b2, W3, b3, img)[5]
     
@@ -191,7 +179,6 @@ def test_prediction(index: int,
                     W2: np.ndarray, b2: np.ndarray, 
                     W3: np.ndarray, b3: np.ndarray) -> None:
     current_image = X_train[:, index, None]
-    print(current_image)
     prediction, confidence = test_prediction_with_confidence(current_image, W1, b1, W2, b2, W3, b3)
     label = Y_train[index]
     print("Prediction:", prediction)
@@ -209,26 +196,55 @@ def get_accuracy(predictions: np.ndarray, Y: np.ndarray) -> float:
 # Process images
 # -------------------
 
-def load_and_preprocess_image(image_path: str) -> np.ndarray:
-    # Charger l'image
-    img = Image.open(image_path)
-    
-    # Vérifier la taille
-    if img.size != (28, 28):
-        raise ValueError(f"L'image doit être de taille 28x28 pixels. Taille actuelle: {img.size}")
-    
-    # Convertir en niveaux de gris
-    img = img.convert('L')
-    
-    # Convertir en tableau numpy
-    img_array = np.array(img, dtype=np.float32)
-    
-    # Inverser les valeurs (pour que 0 = blanc et 1 = noir)
-    img_array = img_array / 255.0
-    return img_array.reshape(784, 1)    
+def load_and_preprocess_csv(csv_path: str) -> np.ndarray:
+    # Charger le CSV
+    values = np.loadtxt(csv_path, delimiter=',')
+    # Normaliser les valeurs entre 0 et 1
+    values /= 255.0
+    # Retourner le tableau reshape en (784, 1)
+    return values.reshape(784, 1) 
 
-def test_img_prediction(img: str, W1: np.ndarray, b1: np.ndarray, W2: np.ndarray, b2: np.ndarray, W3: np.ndarray, b3: np.ndarray) -> None:
-    img = load_and_preprocess_image(img)
+def test_img_prediction(img: str, W1: np.ndarray, b1: np.ndarray, W2: np.ndarray, b2: np.ndarray, W3: np.ndarray, b3: np.ndarray) -> int:
+    img = load_and_preprocess_csv(img)
     prediction, confidence = test_prediction_with_confidence(img, W1, b1, W2, b2, W3, b3)
     print("Prediction:", prediction)
     print("Confidence: {:.2%}".format(confidence))  # Affiche la probabilité en pourcentage
+    return prediction
+
+# -----------------------
+# Process server
+# -----------------------
+def get_layer_activations(img: np.ndarray, W1: np.ndarray, b1: np.ndarray, 
+                         W2: np.ndarray, b2: np.ndarray, 
+                         W3: np.ndarray, b3: np.ndarray) -> tuple:
+    # Propagation avant pour obtenir toutes les activations
+    Z1, A1, Z2, A2, Z3, A3 = forward_prop(W1, b1, W2, b2, W3, b3, img)
+    
+    # Obtenir la prédiction et la confiance
+    prediction = get_predictions(A3)[0]
+    confidence = float(np.max(A3))
+    
+    # Normaliser les activations de chaque couche entre 0 et 1
+    A1_norm = (A1 - A1.min()) / (A1.max() - A1.min() + 1e-10)
+    A2_norm = (A2 - A2.min()) / (A2.max() - A2.min() + 1e-10)
+    A3_norm = A3  # A3 est déjà normalisé (softmax)
+    
+    return {
+        'prediction': int(prediction),
+        'confidence': float(confidence),
+        'layer1_activations': A1_norm.flatten().tolist(),  # 32 neurones
+        'layer2_activations': A2_norm.flatten().tolist(),  # 16 neurones
+        'layer3_activations': A3_norm.flatten().tolist()   # 10 neurones (sortie)
+    }
+
+def load_model():
+    if not all(os.path.exists(f) for f in ["weights/W1.npy", "weights/b1.npy", "weights/W2.npy", "weights/b2.npy", "weights/W3.npy", "weights/b3.npy"]):
+        gradient_descent(X_train, Y_train, 0.1, 500)
+    
+    W1 = np.load("./weights/W1.npy")
+    b1 = np.load("./weights/b1.npy")
+    W2 = np.load("./weights/W2.npy")
+    b2 = np.load("./weights/b2.npy")
+    W3 = np.load("./weights/W3.npy")
+    b3 = np.load("./weights/b3.npy")
+    return W1, b1, W2, b2, W3, b3
