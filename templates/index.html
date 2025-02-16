@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nergrexon</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="{{ url_for('static', filename='js/script.js') }}" defer></script>
+  </head>
+  <body>
+    <div class="container">
+      <div class="canvas-container">
+          <canvas id="pixelCanvas" width="320" height="320" style="image-rendering: pixelated; border:1px solid black;"></canvas>
+          <button id="clearCanvas">Effacer</button>
+          <div id="prediction">Prédiction: -</div>
+      </div>
+      
+      <div class="network-viz">
+          <div class="layer">
+              <div class="layer-title">Couche 1 (32 neurones)</div>
+              <div class="neuron-grid" id="layer1"></div>
+          </div>
+          
+          <div class="layer">
+              <div class="layer-title">Couche 2 (16 neurones)</div>
+              <div class="neuron-grid" id="layer2"></div>
+          </div>
+          
+          <div class="layer">
+              <div class="layer-title">Couche de sortie (10 neurones)</div>
+              <div class="neuron-grid" id="layer3"></div>
+          </div>
+      </div>
+    </div>
+  </body>
+</html>
