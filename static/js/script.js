@@ -1,3 +1,5 @@
+import { createNetworkSVG, updateConnections } from './connections.js';
+
 // Éléments du DOM et constantes
 const canvas = document.getElementById("pixelCanvas");
 const ctx = canvas.getContext("2d", { willReadFrequently: true });
@@ -6,6 +8,7 @@ const pixelSize = canvas.width / gridSize;
 let isDrawing = false;
 let lastX = -1, lastY = -1;
 let drawnPixels = new Map();
+let isErasing = false;
 
 // Création de l'interface des jauges
 function createGauges() {
@@ -60,8 +63,23 @@ function updateActivations(layerId, activations) {
             jauges[index].style.height = `${value * 100}%`;
         }
     });
+    
+    // Mettre à jour les connexions si toutes les activations sont disponibles
+    if (window.currentActivations === undefined) {
+        window.currentActivations = {};
+    }
+    window.currentActivations[layerId] = activations;
+    
+    if (window.currentActivations.layer1 && 
+        window.currentActivations.layer2 && 
+        window.currentActivations.layer3) {
+        updateConnections(
+            window.currentActivations.layer1,
+            window.currentActivations.layer2,
+            window.currentActivations.layer3
+        );
+    }
 }
-
 // Mise à jour des prédictions
 function updatePrediction() {
     let grayValues = new Array(gridSize * gridSize).fill(0);
@@ -116,9 +134,8 @@ function drawGrid() {
     });
 }
 
-// Remplissage d'un pixel et de ses voisins
-function fillPixel(x, y) {
-    // Vérification des limites
+// Effacement d'un pixel et de ses voisins
+function erasePixel(x, y) {
     if (x < 0 || x >= gridSize || y < 0 || y >= gridSize) {
         return;
     }
@@ -128,12 +145,45 @@ function fillPixel(x, y) {
     lastX = x;
     lastY = y;
 
-    // Pixel central
+    const pixels = [
+        [x, y],
+        [x, y - 1], [x - 1, y], [x + 1, y], [x, y + 1],
+        [x - 1, y - 1], [x + 1, y - 1], [x - 1, y + 1], [x + 1, y + 1]
+    ];
+
+    pixels.forEach(([px, py]) => {
+        if (px >= 0 && px < gridSize && py >= 0 && py < gridSize) {
+            drawnPixels.delete(`${px},${py}`);
+            ctx.clearRect(px * pixelSize, py * pixelSize, pixelSize, pixelSize);
+            
+            ctx.strokeStyle = "#ccc";
+            ctx.beginPath();
+            ctx.moveTo(px * pixelSize, py * pixelSize);
+            ctx.lineTo((px + 1) * pixelSize, py * pixelSize);
+            ctx.moveTo(px * pixelSize, py * pixelSize);
+            ctx.lineTo(px * pixelSize, (py + 1) * pixelSize);
+            ctx.stroke();
+        }
+    });
+
+    updatePrediction();
+}
+
+// Remplissage d'un pixel et de ses voisins
+function fillPixel(x, y) {
+    if (x < 0 || x >= gridSize || y < 0 || y >= gridSize) {
+        return;
+    }
+
+    if (x === lastX && y === lastY) return;
+    
+    lastX = x;
+    lastY = y;
+
     drawnPixels.set(`${x},${y}`, 0.85);
     ctx.fillStyle = "rgba(0, 0, 0, 0.85)";
     ctx.fillRect(x * pixelSize, y * pixelSize, pixelSize, pixelSize);
 
-    // Définition des voisins
     const directNeighbors = [
         [x, y - 1], [x - 1, y], [x + 1, y], [x, y + 1]
     ];
@@ -143,7 +193,6 @@ function fillPixel(x, y) {
         [x - 1, y + 1], [x + 1, y + 1]
     ];
 
-    // Remplissage des voisins directs
     ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
     directNeighbors.forEach(([nx, ny]) => {
         if (nx >= 0 && nx < gridSize && ny >= 0 && ny < gridSize) {
@@ -152,7 +201,6 @@ function fillPixel(x, y) {
         }
     });
 
-    // Remplissage des voisins diagonaux
     ctx.fillStyle = "rgba(0, 0, 0, 0.25)";
     diagonalNeighbors.forEach(([nx, ny]) => {
         if (nx >= 0 && nx < gridSize && ny >= 0 && ny < gridSize) {
@@ -172,9 +220,12 @@ function handleMouseMove(e) {
     const x = Math.floor((e.clientX - rect.left) / pixelSize);
     const y = Math.floor((e.clientY - rect.top) / pixelSize);
 
-    // Vérification des limites
     if (x >= 0 && x < gridSize && y >= 0 && y < gridSize) {
-        fillPixel(x, y);
+        if (isErasing) {
+            erasePixel(x, y);
+        } else {
+            fillPixel(x, y);
+        }
     }
 }
 
@@ -184,11 +235,17 @@ function handleMouseDown(e) {
     const x = Math.floor((e.clientX - rect.left) / pixelSize);
     const y = Math.floor((e.clientY - rect.top) / pixelSize);
 
-    // Vérification des limites
     if (x >= 0 && x < gridSize && y >= 0 && y < gridSize) {
         isDrawing = true;
         handleMouseMove(e);
     }
+}
+
+// Mise à jour du style du bouton de gomme
+function updateEraseButtonStyle() {
+    const eraseButton = document.getElementById('eraseButton');
+    eraseButton.style.backgroundColor = isErasing ? '#ff9999' : '';
+    canvas.style.cursor = isErasing ? 'crosshair' : 'default';
 }
 
 // Event Listeners
@@ -201,7 +258,13 @@ canvas.addEventListener("mouseleave", () => {
     isDrawing = false;
 });
 document.getElementById("clearCanvas").addEventListener("click", drawGrid);
+document.getElementById("eraseButton").addEventListener("click", () => {
+    isErasing = !isErasing;
+    updateEraseButtonStyle();
+});
 
 // Initialisation
+createNetworkSVG();
 createGauges();
 drawGrid();
+updateEraseButtonStyle();
